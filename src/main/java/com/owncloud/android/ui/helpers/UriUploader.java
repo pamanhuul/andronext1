@@ -18,11 +18,11 @@
  */
 package com.owncloud.android.ui.helpers;
 
-import android.accounts.Account;
 import android.content.ContentResolver;
 import android.net.Uri;
 import android.os.Parcelable;
 
+import com.nextcloud.client.account.User;
 import com.owncloud.android.R;
 import com.owncloud.android.files.services.FileUploader;
 import com.owncloud.android.lib.common.utils.Log_OC;
@@ -30,7 +30,6 @@ import com.owncloud.android.operations.UploadFileOperation;
 import com.owncloud.android.ui.activity.FileActivity;
 import com.owncloud.android.ui.asynctasks.CopyAndUploadContentUrisTask;
 import com.owncloud.android.ui.fragment.TaskRetainerFragment;
-import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.UriUtils;
 
 import java.util.ArrayList;
@@ -59,7 +58,7 @@ public class UriUploader {
     private int mBehaviour;
 
     private String mUploadPath;
-    private Account mAccount;
+    private User user;
     private boolean mShowWaitingDialog;
 
     private UriUploaderResultCode mCode = UriUploaderResultCode.OK;
@@ -75,7 +74,7 @@ public class UriUploader {
             FileActivity activity,
             List<Parcelable> uris,
             String uploadPath,
-            Account account,
+            User user,
             int behaviour,
             boolean showWaitingDialog,
             CopyAndUploadContentUrisTask.OnCopyTmpFilesTaskListener copyTmpTaskListener
@@ -83,7 +82,7 @@ public class UriUploader {
         mActivity = activity;
         mUrisToUpload = uris;
         mUploadPath = uploadPath;
-        mAccount = account;
+        this.user = user;
         mBehaviour = behaviour;
         mShowWaitingDialog = showWaitingDialog;
         mCopyTmpTaskListener = copyTmpTaskListener;
@@ -138,11 +137,6 @@ public class UriUploader {
         return mCode;
     }
 
-    private String generateDiplayName() {
-        return mActivity.getString(R.string.common_unknown) +
-                "-" + DisplayUtils.unixTimeToHumanReadable(System.currentTimeMillis());
-    }
-
     /**
      * Requests the upload of a file in the local file system to {@link FileUploader} service.
      *
@@ -157,7 +151,7 @@ public class UriUploader {
     private void requestUpload(String localPath, String remotePath) {
         FileUploader.uploadNewFile(
             mActivity,
-            mAccount,
+            user.toPlatformAccount(),
             localPath,
             remotePath,
             mBehaviour,
@@ -196,11 +190,11 @@ public class UriUploader {
 
         copyTask.execute(
                 CopyAndUploadContentUrisTask.makeParamsToExecute(
-                        mAccount,
-                        sourceUris,
-                        remotePaths,
-                        mBehaviour,
-                        mActivity.getContentResolver()
+                    user,
+                    sourceUris,
+                    remotePaths,
+                    mBehaviour,
+                    mActivity.getContentResolver()
                 )
         );
     }
