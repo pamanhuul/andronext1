@@ -1205,7 +1205,7 @@ public final class ThumbnailsCacheManager {
         }
     }
 
-    public static void generateThumbnailFromOCFile(OCFile file) {
+    public static void generateThumbnailFromOCFile(OCFile file, Account account, Context context) {
         int pxW;
         int pxH;
         pxW = pxH = getThumbnailDimension();
@@ -1215,6 +1215,11 @@ public final class ThumbnailsCacheManager {
 
         try {
             Bitmap thumbnail = null;
+
+            if (mClient == null) {
+                OwnCloudAccount ocAccount = new OwnCloudAccount(account, context);
+                mClient = OwnCloudClientManagerFactory.getDefaultSingleton().getClientFor(ocAccount, context);
+            }
 
             String uri = mClient.getBaseUri() + "/index.php/apps/files/api/v1/thumbnail/" +
                 pxW + "/" + pxH + Uri.encode(file.getRemotePath(), "/");

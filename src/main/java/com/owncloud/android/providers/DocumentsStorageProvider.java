@@ -49,6 +49,7 @@ import com.nextcloud.client.preferences.AppPreferences;
 import com.nextcloud.client.preferences.AppPreferencesImpl;
 import com.owncloud.android.MainApp;
 import com.owncloud.android.R;
+import com.owncloud.android.datamodel.ExternalFileDataStorageManager;
 import com.owncloud.android.datamodel.FileDataStorageManager;
 import com.owncloud.android.datamodel.OCFile;
 import com.owncloud.android.datamodel.ThumbnailsCacheManager;
@@ -105,7 +106,7 @@ public class DocumentsStorageProvider extends DocumentsProvider {
     @VisibleForTesting
     static final String DOCUMENTID_SEPARATOR = "/";
     private static final int DOCUMENTID_PARTS = 2;
-    private final SparseArray<FileDataStorageManager> rootIdToStorageManager = new SparseArray<>();
+    private final SparseArray<ExternalFileDataStorageManager> rootIdToStorageManager = new SparseArray<>();
 
     private final Executor executor = Executors.newCachedThreadPool();
 
@@ -157,7 +158,7 @@ public class DocumentsStorageProvider extends DocumentsProvider {
 
         Context context = getNonNullContext();
         Document parentFolder = toDocument(parentDocumentId);
-        FileDataStorageManager storageManager = parentFolder.getStorageManager();
+        ExternalFileDataStorageManager storageManager = parentFolder.getStorageManager();
         final FileCursor resultCursor = new FileCursor(projection);
 
         for (OCFile file : storageManager.getFolderContent(parentFolder.getFile(), false)) {
@@ -304,12 +305,13 @@ public class DocumentsStorageProvider extends DocumentsProvider {
             throws FileNotFoundException {
         Log.d(TAG, "openDocumentThumbnail(), id=" + documentId);
 
-        OCFile file = toDocument(documentId).getFile();
+        Document document = toDocument(documentId);
+        OCFile file = document.getFile();
 
         boolean exists = ThumbnailsCacheManager.containsBitmap(ThumbnailsCacheManager.PREFIX_THUMBNAIL
                                                                    + file.getRemoteId());
         if (!exists) {
-            ThumbnailsCacheManager.generateThumbnailFromOCFile(file);
+            ThumbnailsCacheManager.generateThumbnailFromOCFile(file, document.getAccount(), getContext());
         }
 
         return new AssetFileDescriptor(DiskLruImageCacheFileProvider.getParcelFileDescriptorForOCFile(file),
@@ -344,7 +346,7 @@ public class DocumentsStorageProvider extends DocumentsProvider {
 
         Document document = toDocument(sourceDocumentId);
 
-        FileDataStorageManager storageManager = document.getStorageManager();
+        ExternalFileDataStorageManager storageManager = document.getStorageManager();
         Document targetFolder = toDocument(targetParentDocumentId);
 
         RemoteOperationResult result = new CopyFileOperation(document.getRemotePath(), targetFolder.getRemotePath())
@@ -359,9 +361,14 @@ public class DocumentsStorageProvider extends DocumentsProvider {
         Context context = getNonNullContext();
         Account account = document.getAccount();
 
-        RemoteOperationResult updateParent = new RefreshFolderOperation(targetFolder.getFile(), System.currentTimeMillis(),
-                                                                        false, false, true, storageManager,
-                                                                        account, context)
+        RemoteOperationResult updateParent = new RefreshFolderOperation(targetFolder.getFile(),
+                                                                        System.currentTimeMillis(),
+                                                                        false,
+                                                                        false,
+                                                                        true,
+                                                                        storageManager,
+                                                                        account,
+                                                                        context)
             .execute(targetFolder.getClient());
 
         if (!updateParent.isSuccess()) {
@@ -414,7 +421,7 @@ public class DocumentsStorageProvider extends DocumentsProvider {
 
         FileCursor result = new FileCursor(projection);
 
-        FileDataStorageManager storageManager = getStorageManager(rootId);
+        ExternalFileDataStorageManager storageManager = getStorageManager(rootId);
         if (storageManager == null) {
             return result;
         }
@@ -443,7 +450,7 @@ public class DocumentsStorageProvider extends DocumentsProvider {
 
         Context context = getNonNullContext();
         String newDirPath = targetFolder.getRemotePath() + displayName + PATH_SEPARATOR;
-        FileDataStorageManager storageManager = targetFolder.getStorageManager();
+        ExternalFileDataStorageManager storageManager = targetFolder.getStorageManager();
 
         RemoteOperationResult result = new CreateFolderOperation(newDirPath,
                                                                  accountManager.getUser(),
@@ -456,9 +463,14 @@ public class DocumentsStorageProvider extends DocumentsProvider {
                                                 displayName + " and documentId " + targetFolder.getDocumentId());
         }
 
-        RemoteOperationResult updateParent = new RefreshFolderOperation(targetFolder.getFile(), System.currentTimeMillis(),
-                                                                        false, false, true, storageManager,
-                                                                        targetFolder.getAccount(), context)
+        RemoteOperationResult updateParent = new RefreshFolderOperation(targetFolder.getFile(),
+                                                                        System.currentTimeMillis(),
+                                                                        false,
+                                                                        false,
+                                                                        true,
+                                                                        storageManager,
+                                                                        targetFolder.getAccount(),
+                                                                        context)
             .execute(targetFolder.getClient());
 
         if (!updateParent.isSuccess()) {
@@ -573,7 +585,7 @@ public class DocumentsStorageProvider extends DocumentsProvider {
     }
 
     private void recursiveRevokePermission(Document document) {
-        FileDataStorageManager storageManager = document.getStorageManager();
+        ExternalFileDataStorageManager storageManager = document.getStorageManager();
         OCFile file = document.getFile();
         if (file.isFolder()) {
             for (OCFile child : storageManager.getFolderContent(file, false)) {
@@ -626,9 +638,9 @@ public class DocumentsStorageProvider extends DocumentsProvider {
         return e;
     }
 
-    private FileDataStorageManager getStorageManager(String rootId) {
+    private ExternalFileDataStorageManager getStorageManager(String rootId) {
         for(int i = 0; i < rootIdToStorageManager.size(); i++) {
-            FileDataStorageManager storageManager = rootIdToStorageManager.valueAt(i);
+            ExternalFileDataStorageManager storageManager = rootIdToStorageManager.valueAt(i);
             if (storageManager.getAccount().name.equals(rootId)) {
                 return storageManager;
             }
@@ -644,13 +656,13 @@ public class DocumentsStorageProvider extends DocumentsProvider {
         ContentResolver contentResolver = getContext().getContentResolver();
 
         for (Account account : accountManager.getAccounts()) {
-            final FileDataStorageManager storageManager = new FileDataStorageManager(account, contentResolver);
+            final ExternalFileDataStorageManager storageManager = new ExternalFileDataStorageManager(account, contentResolver);
             rootIdToStorageManager.put(account.hashCode(), storageManager);
         }
     }
 
     private List<Document> findFiles(Document root, String query) {
-        FileDataStorageManager storageManager = root.getStorageManager();
+        ExternalFileDataStorageManager storageManager = root.getStorageManager();
         List<Document> result = new ArrayList<>();
         for (OCFile f : storageManager.getFolderContent(root.getFile(), false)) {
             if (f.isFolder()) {
@@ -674,7 +686,7 @@ public class DocumentsStorageProvider extends DocumentsProvider {
             throw new FileNotFoundException("Invalid documentID " + documentId + "!");
         }
 
-        FileDataStorageManager storageManager = rootIdToStorageManager.get(Integer.parseInt(separated[0]));
+        ExternalFileDataStorageManager storageManager = rootIdToStorageManager.get(Integer.parseInt(separated[0]));
         if (storageManager == null) {
             throw new FileNotFoundException("No storage manager associated for " + documentId + "!");
         }
@@ -713,8 +725,13 @@ public class DocumentsStorageProvider extends DocumentsProvider {
         @Override
         public final RemoteOperationResult doInBackground(Void... params) {
             Log.d(TAG, "run ReloadFolderDocumentTask(), id=" + folder.getDocumentId());
-            return new RefreshFolderOperation(folder.getFile(), System.currentTimeMillis(), false,
-                                              false, true, folder.getStorageManager(), folder.getAccount(),
+            return new RefreshFolderOperation(folder.getFile(),
+                                              System.currentTimeMillis(),
+                                              false,
+                                              false,
+                                              true,
+                                              folder.getStorageManager(),
+                                              folder.getAccount(),
                                               MainApp.getAppContext())
                 .execute(folder.getClient());
         }
@@ -728,20 +745,20 @@ public class DocumentsStorageProvider extends DocumentsProvider {
     }
 
     public class Document {
-        private final FileDataStorageManager storageManager;
+        private final ExternalFileDataStorageManager storageManager;
         private final long fileId;
 
-        Document(FileDataStorageManager storageManager, long fileId) {
+        Document(ExternalFileDataStorageManager storageManager, long fileId) {
             this.storageManager = storageManager;
             this.fileId = fileId;
         }
 
-        Document(FileDataStorageManager storageManager, OCFile file) {
+        Document(ExternalFileDataStorageManager storageManager, OCFile file) {
             this.storageManager = storageManager;
             this.fileId = file.getFileId();
         }
 
-        Document(FileDataStorageManager storageManager, String filePath) {
+        Document(ExternalFileDataStorageManager storageManager, String filePath) {
             this.storageManager = storageManager;
             this.fileId = storageManager.getFileByPath(filePath).getFileId();
         }
@@ -755,7 +772,7 @@ public class DocumentsStorageProvider extends DocumentsProvider {
             return null;
         }
 
-        FileDataStorageManager getStorageManager() {
+        ExternalFileDataStorageManager getStorageManager() {
             return storageManager;
         }
 
