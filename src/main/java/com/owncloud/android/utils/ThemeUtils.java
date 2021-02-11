@@ -201,6 +201,14 @@ public final class ThemeUtils {
         }
     }
 
+    public static int unchangedPrimaryColor(Account account, Context context) {
+        try {
+            return Color.parseColor(getCapability(account, context).getServerColor());
+        } catch (Exception e) {
+            return context.getResources().getColor(R.color.primary);
+        }
+    }
+
     public static int getNeutralGrey(Context context) {
         return darkTheme(context) ? context.getResources().getColor(R.color.fg_contrast) : Color.GRAY;
     }
@@ -239,6 +247,18 @@ public final class ThemeUtils {
 
     public static int fontColor(Context context) {
         return fontColor(context, false);
+    }
+
+    public static int unchangedFontColor(Context context) {
+        try {
+            return Color.parseColor(getCapability(context).getServerTextColor());
+        } catch (Exception e) {
+            if (darkTheme(context)) {
+                return Color.WHITE;
+            } else {
+                return Color.BLACK;
+            }
+        }
     }
 
     /**
